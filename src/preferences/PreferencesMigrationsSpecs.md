@@ -12,6 +12,7 @@
 
 - **Version gating (`shouldRun`)** uses `String.compare(_, options: .numeric)`. A migration with threshold `T` runs iff the stored version is **≤ T** (i.e. compare is *not* `.orderedDescending`). The `.numeric` option is load-bearing: lexically `"9" > "10"`, but numerically `9 < 10`, so a user on `9.x` still gets a `10.x` migration.
 - **Order matters**: `updateToNewPreferences` runs migrations newest-threshold-first; some depend on keys earlier ones leave behind. The per-migration tests isolate each, but the registration list in `updateToNewPreferences` is the integration contract.
+- **Undoing the paywall**: earlier versions reset `appearanceStyle`, `appearanceSize`, `shortcutStyle` and their shortcut-1 overrides to a free value when a trial ended, saving the user's choice in the `<bundle id>.license` suite. `restoreDowngradedPreferences` puts each choice back and deletes it. It is not version-gated, so it runs on every launch; deleting what it restored is what makes that a no-op afterwards.
 - **Idempotency**: `migrateExceptionsTitleArray` must be safe to re-run — already-migrated (array-form) data fails to decode into the legacy (`String?`) shape, triggering an early return that leaves data untouched.
 - **A quirk worth knowing** (pinned by a test): the global→per-shortcut grouping migration copies the global value into the indexed keys, but because index 0's key *is* the old global key, that key is removed at the end — so slot 0 ends up unset while slots 2…10 hold the value.
 - **Testability**: production reads/writes `UserDefaults.standard`; the tests inject an isolated suite via `PreferencesMigrations.defaults` (reset in `tearDown`) so they never touch the dev machine's real prefs.
@@ -83,3 +84,7 @@ Mirrors `PreferencesMigrationsTests.swift` 1:1.
 
 ### P. Dropdowns: English text → indexes
 - **testDropdownTextValuesBecomeIndexes** — `appsToShow "Active app"` → `"1"`; `screensToShow "Screen showing AltTab"` → `"1"`.
+
+### Q. Preferences downgraded when a trial ended
+- **testDowngradedPreferencesAreRestoredAndForgotten** — a choice saved in the legacy license suite (`proTransition.remembered*`) is written back to its preference and removed, so a second run leaves a later user change alone; preferences with no saved choice are untouched.
+- **testFreshInstallIsDecidedOnce** — `isFreshInstall` is false until marked; the first `markFreshInstallIfUnknown` wins.
