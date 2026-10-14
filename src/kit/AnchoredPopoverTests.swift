@@ -154,14 +154,14 @@ final class AnchoredPopoverTests: XCTestCase {
         popover.close()
     }
 
-    func testTheTrialAnnouncementIsConsumedOnlyAfterThePopoverAppears() {
+    func testTheOnShownCallbackRunsOnlyAfterThePopoverAppears() {
         let popover = TestPopover()
         let anchor = NSView()
         var announcements = 0
         popover.readiness = .ready
         popover.present(NSView(), from: anchor, onShown: { announcements += 1 })
         NotificationCenter.default.post(name: NSPopover.didShowNotification, object: popover)
-        XCTAssertEqual(announcements, 0, "An obsolete show notification must not consume the pending announcement")
+        XCTAssertEqual(announcements, 0, "An obsolete show notification must not run the pending callback")
         drainMainQueue()
         XCTAssertEqual(announcements, 0)
         NotificationCenter.default.post(name: NSPopover.didShowNotification, object: popover)
@@ -170,7 +170,7 @@ final class AnchoredPopoverTests: XCTestCase {
         popover.close()
     }
 
-    func testClosingAQueuedReminderPreventsItFromAppearingAfterPurchase() {
+    func testClosingAQueuedPopoverPreventsItFromAppearing() {
         let popover = TestPopover()
         let anchor = NSView()
         var announcements = 0

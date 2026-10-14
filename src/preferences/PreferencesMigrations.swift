@@ -4,6 +4,21 @@ class PreferencesMigrations {
     /// Injectable so tests can run migrations against an isolated `UserDefaults` suite.
     /// Production keeps `.standard`; behavior is unchanged.
     static var defaults = UserDefaults.standard
+    /// The suite where earlier versions kept license and trial state. Only read to undo what they did.
+    static var legacyLicenseDefaults: UserDefaults? { UserDefaults(suiteName: "\(App.bundleIdentifier).license") }
+    /// Each preference earlier versions reset to a free value when a trial ended, and where they saved the
+    /// user's choice (an index into the preference's cases) in `legacyLicenseDefaults`.
+    static let downgradedPreferences = [
+        ("appearanceStyle", "proTransition.rememberedAppearanceStyle"),
+        ("appearanceSize", "proTransition.rememberedAppearanceSize"),
+        ("shortcutStyle", "proTransition.rememberedShortcutStyle"),
+        ("appearanceStyleOverride", "proTransition.rememberedAppearanceStyleOverride"),
+        ("appearanceSizeOverride", "proTransition.rememberedAppearanceSizeOverride"),
+        ("shortcutStyleOverride", "proTransition.rememberedShortcutStyleOverride"),
+    ]
+
+    /// True when this install started with no preferences at all. Written once, on the first launch.
+    static var isFreshInstall: Bool { Self.defaults.bool(forKey: "isFreshInstall") }
 
     static func removeCorruptedPreferences() {
         // from v5.1.0+, there are crash reports of users somehow having their hold shortcuts set to ""
@@ -17,13 +32,29 @@ class PreferencesMigrations {
     static func migratePreferences() {
         let preferencesKey = "preferencesVersion"
         let existingVersion = Self.defaults.string(forKey: preferencesKey)
-        ProTransitionState.markFreshInstallIfUnknown(existingVersion == nil)
+        markFreshInstallIfUnknown(existingVersion == nil)
+        legacyLicenseDefaults.map { restoreDowngradedPreferences($0) }
         if let versionInPlist = existingVersion {
             if versionInPlist != "#VERSION#" && versionInPlist.compare(App.version, options: .numeric) != .orderedDescending {
                 updateToNewPreferences(versionInPlist)
             }
         }
         Self.defaults.set(App.version, forKey: preferencesKey)
+    }
+
+    /// Only the first launch can still observe a nil `preferencesVersion`, so later launches keep its answer.
+    static func markFreshInstallIfUnknown(_ value: Bool) {
+        guard Self.defaults.object(forKey: "isFreshInstall") == nil else { return }
+        Self.defaults.set(value, forKey: "isFreshInstall")
+    }
+
+    /// Not version-gated: it runs on every launch, and is a no-op once each saved choice was restored and removed.
+    static func restoreDowngradedPreferences(_ legacy: UserDefaults) {
+        for (key, legacyKey) in downgradedPreferences {
+            guard let index = legacy.object(forKey: legacyKey) as? Int else { continue }
+            Self.defaults.set(String(index), forKey: key)
+            legacy.removeObject(forKey: legacyKey)
+        }
     }
 
     static func updateToNewPreferences(_ versionInPlist: String) {

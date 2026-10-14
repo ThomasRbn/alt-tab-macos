@@ -10,7 +10,8 @@ import XCTest
 /// LaunchServices APIs.
 ///
 /// Groups: A version gating · B grouping→per-shortcut · C language remap · D/E/F exceptions ·
-/// G/H show-windows dropdowns · I gestures · J cursor · K menubar · L/M sizes · N shortcuts · P dropdowns.
+/// G/H show-windows dropdowns · I gestures · J cursor · K menubar · L/M sizes · N shortcuts · P dropdowns ·
+/// Q trial downgrades.
 final class PreferencesMigrationsTests: XCTestCase {
     var defaults: UserDefaults!
     var suiteName: String!
@@ -276,6 +277,34 @@ final class PreferencesMigrationsTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: "screensToShow"), "1")
     }
 
+    // MARK: - Q. Preferences downgraded when a trial ended
+
+    func testDowngradedPreferencesAreRestoredAndForgotten() {
+        let legacySuiteName = "com.lwouis.alt-tab-macos.tests.migrations.license"
+        let legacy = TestDefaults.make(legacySuiteName)
+        defer { TestDefaults.tearDown(legacy, legacySuiteName) }
+        defaults.set("0", forKey: "appearanceStyle")
+        defaults.set("1", forKey: "appearanceSize")
+        legacy.set(2, forKey: "proTransition.rememberedAppearanceStyle")
+        legacy.set(1, forKey: "proTransition.rememberedShortcutStyleOverride")
+        PreferencesMigrations.restoreDowngradedPreferences(legacy)
+        XCTAssertEqual(defaults.string(forKey: "appearanceStyle"), "2")
+        XCTAssertEqual(defaults.string(forKey: "shortcutStyleOverride"), "1")
+        XCTAssertEqual(defaults.string(forKey: "appearanceSize"), "1", "a preference with no saved choice is left alone")
+        XCTAssertNil(legacy.object(forKey: "proTransition.rememberedAppearanceStyle"))
+        XCTAssertNil(legacy.object(forKey: "proTransition.rememberedShortcutStyleOverride"))
+        defaults.set("0", forKey: "appearanceStyle")
+        PreferencesMigrations.restoreDowngradedPreferences(legacy)
+        XCTAssertEqual(defaults.string(forKey: "appearanceStyle"), "0", "a later launch must not undo a change the user made since")
+    }
+
+    func testFreshInstallIsDecidedOnce() {
+        XCTAssertFalse(PreferencesMigrations.isFreshInstall)
+        PreferencesMigrations.markFreshInstallIfUnknown(true)
+        PreferencesMigrations.markFreshInstallIfUnknown(false)
+        XCTAssertTrue(PreferencesMigrations.isFreshInstall)
+    }
+
     // MARK: - Helpers
 
     private func decodeExceptions() throws -> [ExceptionEntry] {
@@ -345,10 +374,6 @@ enum ShowHowPreference {
 
 extension App {
     static let version = "99.99.99"
-}
-
-enum ProTransitionState {
-    static func markFreshInstallIfUnknown(_ value: Bool) {}
 }
 
 // Preferences encoding surface used by the migrations
